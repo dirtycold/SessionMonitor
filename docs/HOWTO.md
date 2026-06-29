@@ -11,7 +11,9 @@ The initial project plan lives at:
 docs/DRAFT.md
 ```
 
-## Probe Current Sessions
+## Probes
+
+### Snapshot Probe
 
 The current exploratory probe is:
 
@@ -32,6 +34,90 @@ The probe is meant to answer a small set of questions:
 - Where did the remote session come from?
 - Which application most likely created it?
 - Are there related live sessions from the same user/source/application?
+
+### Event Monitor Probe
+
+The event-driven shell probe is:
+
+```bash
+python3 tests/test_loginctl_session_monitor.py
+```
+
+It takes an initial snapshot, starts a logind D-Bus monitor with `gdbus` or
+`busctl`, and refreshes the snapshot when logind emits session-related events.
+
+It prints grouped changes:
+
+```text
+ADDED
+REMOVED
+CHANGED
+```
+
+This probe proved the useful runtime shape:
+
+```text
+logind event arrives
+  -> refresh full session snapshot
+  -> diff previous/current snapshots
+  -> emit or print grouped changes
+```
+
+The event payload is not treated as the source of truth. It is only the trigger
+to refresh the snapshot. This matters because multiple session changes can be
+observed after a single event.
+
+### QtDBus Monitor Probe
+
+The Qt-oriented probe is:
+
+```bash
+python3 tests/test_qt_logind_session_monitor.py
+```
+
+It uses `qtpy` and QtDBus:
+
+```python
+from qtpy.QtDBus import QDBusConnection
+```
+
+The probe defines a self-contained `QtLogindSessionMonitor(QObject)` class. It
+owns both startup probing and event monitoring:
+
+- connects to logind `SessionNew`
+- connects to logind `SessionRemoved`
+- debounces events with a `QTimer`
+- refreshes the full session snapshot
+- computes grouped changes
+- emits one unified signal
+
+The public data signal is:
+
+```python
+updated = Signal(object, object)
+```
+
+The first argument is an `UpdateKind` enum:
+
+```text
+SNAPSHOT
+ADDED
+REMOVED
+CHANGED
+```
+
+The second argument is always:
+
+```python
+dict[str, SessionView]
+```
+
+That dictionary can contain zero, one, or many entries. The initial startup data
+is emitted as `UpdateKind.SNAPSHOT`; later updates are grouped by change type.
+
+The terminal probe also uses a no-op `QTimer` to keep Python signal handling
+responsive while Qt owns the event loop. Without that timer, Ctrl-C may not
+stop the process promptly in a terminal-only Qt application.
 
 ## Detection Mechanism
 
@@ -163,6 +249,6 @@ loginctl kill-session <session-id>
 
 ## Next Step
 
-The probe should eventually become a backend class returning a neutral data
-structure for the PyQt application. The CLI script can then become a thin
-wrapper around that backend.
+The QtDBus probe should eventually move out of `tests/` into an application
+backend module. The PyQt UI can subscribe to `updated(UpdateKind, views)` and
+decide which events should create tray notifications.
