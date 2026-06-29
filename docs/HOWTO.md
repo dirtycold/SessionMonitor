@@ -119,6 +119,75 @@ The terminal probe also uses a no-op `QTimer` to keep Python signal handling
 responsive while Qt owns the event loop. Without that timer, Ctrl-C may not
 stop the process promptly in a terminal-only Qt application.
 
+### Desktop Notification Probe
+
+The desktop notification probe is:
+
+```bash
+python3 tests/test_desktop_notification.py
+```
+
+It sends a notification through the freedesktop notification service:
+
+```text
+org.freedesktop.Notifications
+```
+
+This is the common Linux desktop notification API used by Plasma, GNOME, Xfce,
+and other major desktop environments. The probe talks to the user's session
+D-Bus, so it should be run from a real graphical user session.
+
+Basic test:
+
+```bash
+python3 tests/test_desktop_notification.py \
+  --summary "SSH session" \
+  --body "hello"
+```
+
+The probe prints the notification server and capability list before sending the
+notification. On KDE Plasma, for example, it may report `Plasma (KDE)` and
+capabilities such as `body`, `actions`, and `persistence`.
+
+Timeout behavior:
+
+```bash
+python3 tests/test_desktop_notification.py --timeout 5000
+python3 tests/test_desktop_notification.py --timeout 0
+python3 tests/test_desktop_notification.py --timeout -1
+```
+
+Common meanings:
+
+```text
+5000  expire after about five seconds
+0     persistent notification
+-1    notification server default
+```
+
+For future SSH login alerts, `--timeout 0` is worth considering because a new
+remote session can be security-relevant and should not vanish too quickly.
+
+Icon behavior:
+
+```bash
+python3 tests/test_desktop_notification.py --no-icon
+python3 tests/test_desktop_notification.py --icon dialog-information
+python3 tests/test_desktop_notification.py --icon utilities-terminal
+python3 tests/test_desktop_notification.py --icon network-server
+```
+
+The probe defaults to a repo-local SVG test icon:
+
+```text
+tests/assets/session-monitor-notification.svg
+```
+
+No global icon registration is required. You can pass either a file path or a
+desktop theme icon name with `--icon`. The safest themed icon smoke test is
+`dialog-information`; `utilities-terminal` and `network-server` are closer to
+the SSH-session use case when the desktop theme provides them.
+
 ## Detection Mechanism
 
 The probe starts from systemd-logind:
