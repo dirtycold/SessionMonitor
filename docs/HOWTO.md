@@ -1,0 +1,168 @@
+# HOWTO
+
+This document collects practical notes for experimenting with the session
+notifier prototype.
+
+## Project Draft
+
+The initial project plan lives at:
+
+```text
+docs/DRAFT.md
+```
+
+## Probe Current Sessions
+
+The current exploratory probe is:
+
+```bash
+python3 tests/test_loginctl_sessions.py
+```
+
+It prints one row per `loginctl` session:
+
+```text
+SESSION  USER  LIFE  STATE  KIND  SOURCE  APP  DETAILS
+```
+
+The probe is meant to answer a small set of questions:
+
+- Is the session local or remote?
+- Is it alive, dead, closing, or unknown?
+- Where did the remote session come from?
+- Which application most likely created it?
+- Are there related live sessions from the same user/source/application?
+
+## Detection Mechanism
+
+The probe starts from systemd-logind:
+
+```bash
+loginctl list-sessions --no-legend --no-pager
+loginctl show-session <session-id> --no-pager
+```
+
+`show-session` is treated as the source of truth for the core session fields:
+
+```text
+Id
+User
+Name
+Remote
+RemoteHost
+Service
+TTY
+Leader
+State
+Type
+Class
+Display
+Seat
+ControlGroup
+```
+
+The script then enriches those fields with process information from the
+session leader, child processes, and the session cgroup when available.
+
+### Life State
+
+`LIFE` is a simplified status derived from logind state plus visible processes:
+
+```text
+alive    State is active, online, or opening
+alive    a matching utmp/who entry proves the session is still usable
+closing  State is closing, but session processes are still visible
+dead     State is closing, and no session processes are visible
+unknown  anything else
+```
+
+`State=closing` does not always mean a remote tool is gone. It can mean the
+original SSH/PAM login has closed while child processes or a tool-specific
+transport is still around.
+
+### Application Classification
+
+The probe classifies `APP` from the best signal it can find:
+
+```text
+mosh      mosh-server process, or a matching who/utmp entry containing "mosh"
+sftp      sftp-server or internal-sftp process
+codex     codex app-server or .codex process path
+vscode    .vscode-server, code-server, or remotessh process path
+ssh       Service=sshd fallback
+sddm      Service=sddm for the local desktop session
+```
+
+This is intentionally heuristic. `loginctl` itself only knows that many remote
+sessions were created through `sshd`; identifying the higher-level client
+requires looking at the process tree.
+
+### Mosh
+
+Mosh needs special handling because SSH is only used to bootstrap the
+connection. After that, mosh keeps its own UDP-based connection alive.
+
+That means logind can show the original SSH session as `State=closing` even
+when the mosh terminal is still usable. The probe checks `who`/utmp as a
+secondary signal so a mosh session can still be reported as alive.
+
+### Related Sessions
+
+Some clients open multiple SSH sessions from the same source. Examples include:
+
+- Codex remote access
+- VS Code Remote SSH
+- SFTP clients
+- OpenSSH multiplexing or reconnect behavior
+
+When a dead session has live sessions with the same user, source, and
+application classification, the probe annotates it with:
+
+```text
+related=<session-id>[,<session-id>...]
+```
+
+This does not mean the live sessions were spawned by the dead one. It only means
+they look related enough to avoid treating the dead session as a separate
+current login.
+
+## Useful Manual Checks
+
+Inspect one session:
+
+```bash
+loginctl session-status <session-id>
+loginctl show-session <session-id> --no-pager
+```
+
+Inspect a session leader:
+
+```bash
+ps -fp <leader-pid>
+pstree -aps <leader-pid>
+```
+
+Inspect terminal login records:
+
+```bash
+who
+who -u
+```
+
+Clean up a stale session when you are sure it is no longer useful:
+
+```bash
+loginctl terminate-session <session-id>
+```
+
+If it remains stuck and you are certain it is stale:
+
+```bash
+loginctl kill-session <session-id>
+```
+
+## Next Step
+
+The probe should eventually become a backend class returning a neutral data
+structure for the PyQt application. The CLI script can then become a thin
+wrapper around that backend.
