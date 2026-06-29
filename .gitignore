@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local editor and OS noise
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Qt/PyQt generated files
+*.qmlc
+*.jsc
+*.rcc
