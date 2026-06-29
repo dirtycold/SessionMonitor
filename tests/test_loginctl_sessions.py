@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -105,11 +106,20 @@ class LoginSession:
             [process.name for process in self.processes]
             + [process.args for process in self.processes]
         )
+        lowered_process_text = process_text.lower()
 
-        if "mosh-server" in process_text:
+        if "mosh-server" in lowered_process_text:
             return "mosh"
-        if "sftp-server" in process_text or "internal-sftp" in process_text:
+        if "sftp-server" in lowered_process_text or "internal-sftp" in lowered_process_text:
             return "sftp"
+        if "codex app-server" in lowered_process_text or "/.codex/" in lowered_process_text:
+            return "codex"
+        if (
+            ".vscode-server" in lowered_process_text
+            or "code-server" in lowered_process_text
+            or "remotessh" in lowered_process_text
+        ):
+            return "vscode"
         if self.service == "sshd":
             return "ssh"
         if self.service:
@@ -251,6 +261,10 @@ def print_row(
     )
 
 
+def session_sort_key(session_id: str) -> tuple[int, int | str]:
+    return (0, int(session_id)) if session_id.isdigit() else (1, session_id)
+
+
 def read_process(pid: str) -> ProcessInfo | None:
     result = run_process(["ps", "-p", pid, "-o", "comm=", "-o", "args="])
     if result.returncode != 0:
@@ -365,11 +379,15 @@ def main() -> int:
         print("No login sessions found.")
         return 0
 
-    alive_by_source = {
-        (session.user, session.kind, session.source, session.application): session.session_id
-        for session in sessions
-        if session.life == "alive"
-    }
+    alive_by_source: dict[tuple[str, str, str, str], list[str]] = defaultdict(list)
+    for session in sessions:
+        if session.life != "alive":
+            continue
+        key = (session.user, session.kind, session.source, session.application)
+        alive_by_source[key].append(session.session_id)
+
+    for session_ids in alive_by_source.values():
+        session_ids.sort(key=session_sort_key)
 
     print_row("SESSION", "USER", "LIFE", "STATE", "KIND", "SOURCE", "APP", "DETAILS")
     for session in sessions:
@@ -377,8 +395,14 @@ def main() -> int:
         superseded_by = alive_by_source.get(
             (session.user, session.kind, session.source, session.application)
         )
-        if session.life == "dead" and superseded_by not in {None, session.session_id}:
-            details = f"{details}, superseded_by={superseded_by}"
+        if session.life == "dead" and superseded_by:
+            related_ids = [
+                session_id
+                for session_id in superseded_by
+                if session_id != session.session_id
+            ]
+            if related_ids:
+                details = f"{details}, related={','.join(related_ids)}"
 
         print_row(
             session.session_id,
