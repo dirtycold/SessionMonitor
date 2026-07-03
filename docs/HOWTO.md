@@ -22,6 +22,24 @@ python3 SessionMonitor.py
 It opens the session list on startup, keeps a tray icon running, refreshes from
 systemd-logind events, and sends desktop notifications for session changes.
 
+Equivalent explicit tray launch:
+
+```bash
+python3 SessionMonitor.py --tray
+```
+
+Print the current session list once without opening the tray UI:
+
+```bash
+python3 SessionMonitor.py --list
+```
+
+Show command-line options:
+
+```bash
+python3 SessionMonitor.py --help
+```
+
 ## Probes
 
 ### Snapshot Probe

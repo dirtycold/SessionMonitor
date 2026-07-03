@@ -6,6 +6,8 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from argparse import ArgumentParser
+from argparse import Namespace
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
@@ -203,6 +205,38 @@ class UpdateKind(Enum):
 
 def session_sort_key(session_id: str) -> tuple[int, int | str]:
     return (0, int(session_id)) if session_id.isdigit() else (1, session_id)
+
+
+def print_row(
+    session_id: str,
+    user: str,
+    life: str,
+    state: str,
+    kind: str,
+    source: str,
+    application: str,
+    details: str,
+) -> None:
+    print(
+        f"{session_id:<8} {user:<16} {life:<8} {state:<8} {kind:<8} "
+        f"{source:<40} {application:<10} {details}"
+    )
+
+
+def print_session_views(views: dict[str, SessionView]) -> None:
+    print_row("SESSION", "USER", "LIFE", "STATE", "KIND", "SOURCE", "APP", "DETAILS")
+    for session_id in sorted(views, key=session_sort_key):
+        view = views[session_id]
+        print_row(
+            view.session_id,
+            view.user,
+            view.life,
+            view.state,
+            view.kind,
+            view.source,
+            view.application,
+            view.details,
+        )
 
 
 class QtLogindSessionMonitor(QObject):
@@ -950,6 +984,52 @@ class SessionTrayApp:
 
 
 def main() -> int:
+    args = parse_args()
+    if args.list:
+        return list_sessions_once()
+
+    return run_tray_app()
+
+
+def parse_args() -> Namespace:
+    parser = ArgumentParser(
+        description="Monitor local and remote login sessions.",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--tray",
+        action="store_true",
+        help="start the tray app; this is the default when no mode is given",
+    )
+    mode.add_argument(
+        "--list",
+        action="store_true",
+        help="print current login sessions once and exit",
+    )
+    return parser.parse_args()
+
+
+def list_sessions_once() -> int:
+    monitor = QtLogindSessionMonitor()
+
+    try:
+        views = monitor.session_views()
+    except FileNotFoundError:
+        print("loginctl is not installed or is not on PATH.", file=sys.stderr)
+        return 127
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+
+    if not views:
+        print("No login sessions found.")
+        return 0
+
+    print_session_views(views)
+    return 0
+
+
+def run_tray_app() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setQuitOnLastWindowClosed(False)
