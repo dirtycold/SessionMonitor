@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 import dbus
 
@@ -19,7 +18,7 @@ APP_NAME = "SessionMonitor Probe"
 NOTIFICATIONS_SERVICE = "org.freedesktop.Notifications"
 NOTIFICATIONS_PATH = "/org/freedesktop/Notifications"
 NOTIFICATIONS_INTERFACE = "org.freedesktop.Notifications"
-DEFAULT_ICON = Path(__file__).resolve().parent / "assets" / "session-monitor-notification.svg"
+DEFAULT_ICON = "face-plain"
 
 
 def notification_interface() -> dbus.Interface:
@@ -88,10 +87,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--icon",
-        default=str(DEFAULT_ICON),
+        default=DEFAULT_ICON,
         help=(
-            "icon file path or themed icon name; defaults to the repo-local "
-            "test icon"
+            "icon file path or themed icon name; defaults to a standard "
+            "theme icon"
         ),
     )
     parser.add_argument(
@@ -106,9 +105,14 @@ def resolve_icon(icon: str, no_icon: bool) -> str:
     if no_icon:
         return ""
 
-    path = Path(icon).expanduser()
-    if path.exists():
-        return str(path.resolve())
+    try:
+        from pathlib import Path
+
+        path = Path(icon).expanduser()
+        if path.exists():
+            return str(path.resolve())
+    except OSError:
+        pass
 
     return icon
 

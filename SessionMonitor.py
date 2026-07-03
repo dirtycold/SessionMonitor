@@ -48,7 +48,7 @@ APP_NAME = "SessionMonitor"
 NOTIFICATIONS_SERVICE = "org.freedesktop.Notifications"
 NOTIFICATIONS_PATH = "/org/freedesktop/Notifications"
 NOTIFICATIONS_INTERFACE = "org.freedesktop.Notifications"
-DEFAULT_ICON = "utilities-terminal"
+DEFAULT_ICON = "face-plain"
 
 
 @dataclass(frozen=True)
@@ -922,7 +922,7 @@ class SessionTrayApp:
         self._notifier = DesktopNotifier()
         self._sessions: dict[str, SessionView] = {}
         self._window = SessionWindow(self._monitor)
-        self._tray = QSystemTrayIcon(self._tray_icon(), self._window)
+        self._tray = QSystemTrayIcon(self._themed_icon(DEFAULT_ICON), self._window)
         self._tray.setToolTip("SessionMonitor")
         self._tray.activated.connect(self._on_tray_activated)
         self._monitor.updated.connect(self._on_sessions_updated)
@@ -977,8 +977,8 @@ class SessionTrayApp:
         }:
             self.open_window()
 
-    def _tray_icon(self) -> QIcon:
-        icon = QIcon.fromTheme(DEFAULT_ICON)
+    def _themed_icon(self, name: str) -> QIcon:
+        icon = QIcon.fromTheme(name)
         if icon.isNull():
             icon = self._window.style().standardIcon(QStyle.SP_ComputerIcon)
         return icon

@@ -201,21 +201,14 @@ Icon behavior:
 
 ```bash
 python3 tests/test_desktop_notification.py --no-icon
+python3 tests/test_desktop_notification.py --icon face-plain
 python3 tests/test_desktop_notification.py --icon dialog-information
-python3 tests/test_desktop_notification.py --icon utilities-terminal
-python3 tests/test_desktop_notification.py --icon network-server
 ```
 
-The probe defaults to a repo-local SVG test icon:
-
-```text
-tests/assets/session-monitor-notification.svg
-```
-
-No global icon registration is required. You can pass either a file path or a
-desktop theme icon name with `--icon`. The safest themed icon smoke test is
-`dialog-information`; `utilities-terminal` and `network-server` are closer to
-the SSH-session use case when the desktop theme provides them.
+The probe and tray app default to the standard theme icon `face-plain`. You can
+pass either a file path or a desktop theme icon name with `--icon`;
+`dialog-information` is a useful fallback smoke test when a theme does not
+provide the face icons.
 
 ## Detection Mechanism
 
