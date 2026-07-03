@@ -689,7 +689,8 @@ class SessionWindow(QMainWindow):
         super().__init__()
         self._monitor = monitor
         self.setWindowTitle("SessionMonitor")
-        self.resize(760, 420)
+        self.resize(480, 360)
+        self.setMinimumSize(420, 260)
 
         self._action_widgets: list[tuple[QTreeWidgetItem, QWidget]] = []
         self._tree = HoverActionTree()
@@ -706,8 +707,8 @@ class SessionWindow(QMainWindow):
         header = self._tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
 
         footer = QWidget()
         footer_layout = QHBoxLayout(footer)
@@ -715,6 +716,7 @@ class SessionWindow(QMainWindow):
         footer_layout.setSpacing(6)
 
         self._about_button = self._tool_button("About", QStyle.SP_MessageBoxInformation)
+        self._about_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._about_button.clicked.connect(self._show_about)
 
         footer_layout.addWidget(self._about_button)
