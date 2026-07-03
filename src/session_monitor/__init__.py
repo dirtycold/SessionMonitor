@@ -1,2 +1,0 @@
-"""SessionMonitor application package."""
-

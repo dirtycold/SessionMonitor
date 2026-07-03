@@ -11,6 +11,17 @@ The initial project plan lives at:
 docs/DRAFT.md
 ```
 
+## Tray App
+
+The current app entry point is a single root-level script:
+
+```bash
+python3 SessionMonitor.py
+```
+
+It opens the session list on startup, keeps a tray icon running, refreshes from
+systemd-logind events, and sends desktop notifications for session changes.
+
 ## Probes
 
 ### Snapshot Probe
