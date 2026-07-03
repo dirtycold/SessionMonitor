@@ -13,6 +13,7 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+import re
 
 
 @dataclass(frozen=True)
@@ -230,7 +231,19 @@ def matching_utmp_entry(
     user = properties.get("Name", "")
 
     for entry in entries:
-        if tty and entry.tty == tty:
+        if not tty or entry.tty != tty:
+            continue
+        if remote and entry.source.startswith(":"):
+            continue
+        if remote and entry.source == "-":
+            continue
+        if user and entry.user != user:
+            continue
+        if remote_host and entry.source not in {remote_host, "-"}:
+            continue
+        if remote_host and entry.source == "-":
+            continue
+        if not remote or entry.source == remote_host or entry.application != "-":
             return entry
 
     if remote and service == "sshd" and state == "closing":
@@ -314,7 +327,12 @@ def session_processes(properties: dict[str, str]) -> list[ProcessInfo]:
 
     if pids:
         processes = [process for pid in pids if (process := read_process(pid))]
-        return processes[:32]
+        if processes:
+            return processes[:32]
+
+    session_status_processes = session_status_processes_for(properties)
+    if session_status_processes:
+        return session_status_processes[:32]
 
     if not leader:
         return []
@@ -336,6 +354,29 @@ def session_processes(properties: dict[str, str]) -> list[ProcessInfo]:
         queue.extend(child_pids(pid))
 
     return found
+
+
+def session_status_processes_for(properties: dict[str, str]) -> list[ProcessInfo]:
+    session_id = properties.get("Id")
+    if not session_id:
+        return []
+
+    result = run_command(["loginctl", "session-status", session_id, "--no-pager"])
+    if result.returncode != 0:
+        return []
+
+    processes: list[ProcessInfo] = []
+    for line in result.stdout.splitlines():
+        match = re.search(r"[\u251c\u2514]\u2500\s*(\d+)\s+(.+)$", line)
+        if match is None:
+            continue
+
+        pid = match.group(1)
+        args = match.group(2).strip()
+        name = args.split(maxsplit=1)[0].strip('"')
+        processes.append(ProcessInfo(pid=pid, name=name, args=args))
+
+    return processes
 
 
 def list_sessions() -> list[LoginSession]:

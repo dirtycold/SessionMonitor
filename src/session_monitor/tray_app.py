@@ -6,6 +6,12 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
+from .logind import QtLogindSessionMonitor
+from .logind import SessionView
+from .logind import UpdateKind
+from .logind import session_sort_key
+from .notifications import DesktopNotifier
+
 from qtpy.QtCore import QEvent
 from qtpy.QtCore import QPoint
 from qtpy.QtCore import Qt
@@ -37,6 +43,7 @@ class SessionRow:
     session_id: str
     state: str
     application: str
+    view: SessionView | None = None
 
 
 class HoverActionTree(QTreeWidget):
@@ -65,8 +72,9 @@ class HoverActionTree(QTreeWidget):
 class SessionWindow(QMainWindow):
     """Main session list window."""
 
-    def __init__(self) -> None:
+    def __init__(self, monitor: QtLogindSessionMonitor) -> None:
         super().__init__()
+        self._monitor = monitor
         self.setWindowTitle("SessionMonitor")
         self.resize(760, 420)
 
@@ -97,7 +105,7 @@ class SessionWindow(QMainWindow):
         self._about_button.clicked.connect(self._show_about)
 
         self._refresh_button = self._tool_button("Refresh", QStyle.SP_BrowserReload)
-        self._refresh_button.clicked.connect(self._load_placeholder_rows)
+        self._refresh_button.clicked.connect(self._monitor.refresh)
 
         footer_layout.addWidget(self._about_button)
         footer_layout.addWidget(self._refresh_button)
@@ -111,7 +119,7 @@ class SessionWindow(QMainWindow):
         layout.addWidget(footer)
         self.setCentralWidget(content)
 
-        self._load_placeholder_rows()
+        self.set_sessions({})
 
     def closeEvent(self, event: QCloseEvent) -> None:
         event.ignore()
@@ -125,16 +133,22 @@ class SessionWindow(QMainWindow):
         button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         return button
 
-    def _load_placeholder_rows(self) -> None:
-        rows = [
-            SessionRow("6", "active", "sddm"),
-            SessionRow("41", "active", "codex"),
-            SessionRow("42", "active", "vscode"),
-            SessionRow("43", "closing", "mosh"),
-        ]
-
+    def set_sessions(self, views: dict[str, SessionView]) -> None:
         self._tree.clear()
         self._action_widgets.clear()
+
+        rows = [
+            SessionRow(
+                session_id=view.session_id,
+                state=view.state or view.life,
+                application=view.application,
+                view=view,
+            )
+            for _session_id, view in sorted(
+                views.items(),
+                key=lambda item: session_sort_key(item[0]),
+            )
+        ]
 
         for row in rows:
             item = QTreeWidgetItem([row.session_id, row.state, row.application, ""])
@@ -243,10 +257,14 @@ class SessionTrayApp:
 
     def __init__(self, app: QApplication) -> None:
         self._app = app
-        self._window = SessionWindow()
+        self._monitor = QtLogindSessionMonitor()
+        self._notifier = DesktopNotifier()
+        self._sessions: dict[str, SessionView] = {}
+        self._window = SessionWindow(self._monitor)
         self._tray = QSystemTrayIcon(self._tray_icon(), self._window)
         self._tray.setToolTip("SessionMonitor")
         self._tray.activated.connect(self._on_tray_activated)
+        self._monitor.updated.connect(self._on_sessions_updated)
 
         menu = QMenu()
         open_action = QAction("Open", menu)
@@ -262,6 +280,7 @@ class SessionTrayApp:
     def show(self) -> None:
         if QSystemTrayIcon.isSystemTrayAvailable():
             self._tray.show()
+            self.open_window()
         else:
             QMessageBox.warning(
                 self._window,
@@ -269,6 +288,17 @@ class SessionTrayApp:
                 "System tray is not available. Opening the window instead.",
             )
             self.open_window()
+
+    def start_monitor(self) -> bool:
+        if self._monitor.start():
+            return True
+
+        QMessageBox.warning(
+            self._window,
+            "SessionMonitor",
+            f"Could not start logind monitoring:\n{self._monitor.last_error}",
+        )
+        return False
 
     def open_window(self) -> None:
         self._window.show()
@@ -292,6 +322,53 @@ class SessionTrayApp:
             icon = self._window.style().standardIcon(QStyle.SP_ComputerIcon)
         return icon
 
+    def _on_sessions_updated(
+        self,
+        kind: UpdateKind,
+        views: dict[str, SessionView],
+    ) -> None:
+        if kind == UpdateKind.SNAPSHOT:
+            self._sessions = dict(views)
+        elif kind == UpdateKind.REMOVED:
+            for session_id in views:
+                self._sessions.pop(session_id, None)
+        else:
+            self._sessions.update(views)
+
+        self._window.set_sessions(self._sessions)
+
+        if kind != UpdateKind.SNAPSHOT and views:
+            self._notify_session_change(kind, views)
+
+    def _notify_session_change(
+        self,
+        kind: UpdateKind,
+        views: dict[str, SessionView],
+    ) -> None:
+        count = len(views)
+        verb = {
+            UpdateKind.ADDED: "added",
+            UpdateKind.REMOVED: "removed",
+            UpdateKind.CHANGED: "changed",
+        }.get(kind, "updated")
+        summary = f"Session {verb}" if count == 1 else f"{count} sessions {verb}"
+        lines = [
+            f"{view.session_id}: {view.application} {view.state} from {view.source}"
+            for view in views.values()
+        ]
+        body = "\n".join(lines)
+
+        if self._notifier.send(summary, body):
+            return
+
+        if self._tray.isVisible():
+            self._tray.showMessage(
+                summary,
+                body,
+                QSystemTrayIcon.Information,
+                5000,
+            )
+
 
 def main() -> int:
     app = QApplication(sys.argv)
@@ -300,4 +377,5 @@ def main() -> int:
 
     tray_app = SessionTrayApp(app)
     tray_app.show()
+    tray_app.start_monitor()
     return app.exec()

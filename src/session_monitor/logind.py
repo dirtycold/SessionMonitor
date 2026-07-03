@@ -1,14 +1,7 @@
-#!/usr/bin/env python3
-"""QtDBus-based login session monitor probe.
-
-Run directly:
-
-    python3 tests/test_qt_logind_session_monitor.py
-"""
+"""QtDBus-based login session monitor."""
 
 from __future__ import annotations
 
-import signal
 import subprocess
 import sys
 from collections import defaultdict
@@ -17,7 +10,6 @@ from enum import Enum
 from pathlib import Path
 import re
 
-from qtpy.QtCore import QCoreApplication
 from qtpy.QtCore import QObject
 from qtpy.QtCore import QTimer
 from qtpy.QtCore import Signal
@@ -174,39 +166,6 @@ def session_sort_key(session_id: str) -> tuple[int, int | str]:
     return (0, int(session_id)) if session_id.isdigit() else (1, session_id)
 
 
-def print_row(
-    session_id: str,
-    user: str,
-    life: str,
-    state: str,
-    kind: str,
-    source: str,
-    application: str,
-    details: str,
-) -> None:
-    print(
-        f"{session_id:<8} {user:<16} {life:<8} {state:<8} {kind:<8} "
-        f"{source:<40} {application:<10} {details}"
-    )
-
-
-def print_views(prefix: str, views: dict[str, SessionView]) -> None:
-    print(f"{prefix}:")
-    print_row("SESSION", "USER", "LIFE", "STATE", "KIND", "SOURCE", "APP", "DETAILS")
-    for session_id in sorted(views, key=session_sort_key):
-        view = views[session_id]
-        print_row(
-            view.session_id,
-            view.user,
-            view.life,
-            view.state,
-            view.kind,
-            view.source,
-            view.application,
-            view.details,
-        )
-
-
 class QtLogindSessionMonitor(QObject):
     """Fetch and monitor login sessions using logind events."""
 
@@ -249,9 +208,14 @@ class QtLogindSessionMonitor(QObject):
         self.refresh()
         return True
 
+    @property
+    def views(self) -> dict[str, SessionView]:
+        return dict(self._views)
+
     @Slot(str, QDBusObjectPath)
     def _on_session_signal(self, session_id: str, path: QDBusObjectPath) -> None:
-        print(f"event: session={session_id} path={path.path()}")
+        _ = session_id
+        _ = path
         self._refresh_timer.start()
 
     @Slot()
@@ -571,38 +535,3 @@ class QtLogindSessionMonitor(QObject):
 
     def run_command(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(args, check=False, capture_output=True, text=True)
-
-
-def main() -> int:
-    app = QCoreApplication(sys.argv)
-    monitor = QtLogindSessionMonitor()
-
-    # Let Python process Ctrl-C while Qt owns the event loop.
-    interrupt_timer = QTimer()
-    interrupt_timer.timeout.connect(lambda: None)
-    interrupt_timer.start(250)
-
-    def stop(_signum: int, _frame: object) -> None:
-        print()
-        print("Stopped.")
-        app.quit()
-
-    signal.signal(signal.SIGINT, stop)
-    signal.signal(signal.SIGTERM, stop)
-
-    monitor.updated.connect(lambda kind, views: print_views(kind.value, views))
-
-    if not monitor.start():
-        print(monitor.last_error, file=sys.stderr)
-        return 1
-
-    print()
-    print("Monitoring logind events with QtDBus.")
-    print("Press Ctrl-C to stop.")
-    print()
-
-    return app.exec()
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
