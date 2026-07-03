@@ -10,6 +10,7 @@ from argparse import ArgumentParser
 from argparse import Namespace
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
@@ -1013,13 +1014,15 @@ class SessionTrayApp:
             UpdateKind.CHANGED: "changed",
         }.get(kind, "updated")
         summary = f"Session {verb}" if count == 1 else f"{count} sessions {verb}"
-        lines = [
-            f"{view.session_id}: {view.application} {view.state} from {view.source}"
+        lines = [datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+        lines.extend(
+            f"<b>{view.session_id}</b>: {view.application} ({view.source})"
             for view in views.values()
-        ]
+        )
         body = "\n".join(lines)
+        timeout_ms = 0 if kind == UpdateKind.ADDED else 5000
 
-        if self._notifier.send(summary, body):
+        if self._notifier.send(summary, body, expire_timeout_ms=timeout_ms):
             return
 
         if self._tray.isVisible():
@@ -1027,7 +1030,7 @@ class SessionTrayApp:
                 summary,
                 body,
                 QSystemTrayIcon.Information,
-                5000,
+                timeout_ms,
             )
 
 
