@@ -851,18 +851,64 @@ class SessionWindow(QMainWindow):
         dialog.exec()
 
     def _request_terminate(self, row: SessionRow) -> None:
-        QMessageBox.information(
-            self,
-            "Terminate Session",
-            f"Terminate session {row.session_id} will be implemented later.",
+        self._run_session_command(
+            row=row,
+            action="Terminate",
+            command=["loginctl", "terminate-session", row.session_id],
+            prompt=(
+                f"Terminate session {row.session_id}?\n\n"
+                "This asks systemd-logind to stop the session cleanly."
+            ),
+            icon=QMessageBox.Question,
         )
 
     def _request_kill(self, row: SessionRow) -> None:
-        QMessageBox.warning(
-            self,
-            "Kill Session",
-            f"Kill session {row.session_id} will be implemented later.",
+        self._run_session_command(
+            row=row,
+            action="Kill",
+            command=["loginctl", "kill-session", row.session_id],
+            prompt=(
+                f"Kill session {row.session_id}?\n\n"
+                "This is more forceful than terminate and may interrupt running work."
+            ),
+            icon=QMessageBox.Warning,
         )
+
+    def _run_session_command(
+        self,
+        row: SessionRow,
+        action: str,
+        command: list[str],
+        prompt: str,
+        icon: QMessageBox.Icon,
+    ) -> None:
+        confirm = QMessageBox(self)
+        confirm.setIcon(icon)
+        confirm.setWindowTitle(f"{action} Session")
+        confirm.setText(prompt)
+        confirm.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        confirm.setDefaultButton(QMessageBox.No)
+
+        answer = confirm.exec()
+        if answer != QMessageBox.Yes:
+            return
+
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip()
+            if not message:
+                message = f"{' '.join(command)} exited with status {result.returncode}."
+            QMessageBox.warning(self, f"{action} Failed", message)
+            self._monitor.refresh()
+            return
+
+        self._monitor.refresh()
 
 
 class SessionTrayApp:
