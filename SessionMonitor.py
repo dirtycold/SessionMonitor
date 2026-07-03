@@ -717,11 +717,7 @@ class SessionWindow(QMainWindow):
         self._about_button = self._tool_button("About", QStyle.SP_MessageBoxInformation)
         self._about_button.clicked.connect(self._show_about)
 
-        self._refresh_button = self._tool_button("Refresh", QStyle.SP_BrowserReload)
-        self._refresh_button.clicked.connect(self._monitor.refresh)
-
         footer_layout.addWidget(self._about_button)
-        footer_layout.addWidget(self._refresh_button)
         footer_layout.addStretch(1)
 
         content = QWidget()
@@ -787,14 +783,18 @@ class SessionWindow(QMainWindow):
         details.setToolTip(f"Show details for session {row.session_id}")
         details.setIcon(self.style().standardIcon(QStyle.SP_FileDialogInfoView))
         details.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        details.setAutoRaise(True)
         details.clicked.connect(lambda: self._show_details(row))
 
         terminate = QToolButton()
         terminate.setText("Terminate")
-        terminate.setToolTip(f"Terminate session {row.session_id}")
+        terminate.setToolTip(
+            f"Terminate session {row.session_id}; press and hold to kill"
+        )
         terminate.setIcon(self.style().standardIcon(QStyle.SP_DialogCloseButton))
         terminate.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        terminate.setPopupMode(QToolButton.MenuButtonPopup)
+        terminate.setAutoRaise(True)
+        terminate.setPopupMode(QToolButton.DelayedPopup)
         terminate.clicked.connect(lambda: self._request_terminate(row))
 
         menu = QMenu(terminate)
